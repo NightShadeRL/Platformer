@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Platformer Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #87CEEB;
+    }
+    canvas {
+      display: block;
+      background: #222;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      font-family: sans-serif;
+      color: white;
+    }
+    button {
+      font-size: 16px;
+      padding: 6px 12px;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="ui">
+  <button onclick="restartLevel()">🔁 Restart Level</button>
+  <button onclick="refreshLevel()">🔄 Refresh Level</button>
+  <span>Score: <span id="score">0</span></span>
+  <span>High Score: <span id="high-score">0</span></span>
+</div>
+
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let score = 0;
+let isGameOver = false;
+let highScore = localStorage.getItem('highScore') ? parseInt(localStorage.getItem('highScore')) : 0;
+
+document.getElementById('high-score').textContent = highScore;
+
+const keys = {};
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
+
+class Player {
+  constructor() {
+    this.width = 40;
+    this.height = 60;
+    this.reset();
+    this.speed = 5;
+    this.jumpStrength = 15;
+    this.onGround = false;
+  }
+
+  reset() {
+    this.x = 100;
+    this.y = canvas.height - this.height - 10; // Starts on the floor
+    this.velX = 0;
+    this.velY = 0;
+  }
+
+  update() {
+    if (keys['ArrowLeft'] || keys['a']) this.velX = -this.speed;
+    else if (keys['ArrowRight'] || keys['d']) this.velX = this.speed;
+    else this.velX = 0;
+
+    if ((keys['ArrowUp'] || keys['w'] || keys[' ']) && this.onGround) {
+      this.velY = -this.jumpStrength;
+      this.onGround = false;
+    }
+
+    this.velY += 0.8;
+    this.x += this.velX;
+    this.y += this.velY;
+
+    this.onGround = false;
+
+    for (let plat of platforms) {
+      if (
+        this.x < plat.x + plat.width &&
+        this.x + this.width > plat.x &&
+        this.y + this.height < plat.y + 10 &&
+        this.y + this.height + this.velY >= plat.y
+      ) {
+        this.y = plat.y - this.height;
+        this.velY = 0;
+        this.onGround = true;
+      }
+    }
+
+    if (this.y + this.height > canvas.height) {
+      this.y = canvas.height - this.height;
+      this.velY = 0;
+      this.onGround = true;
+    }
+
+    for (let enemy of enemies) {
+      if (
+        this.x < enemy.x + enemy.size &&
+        this.x + this.width > enemy.x &&
+        this.y < enemy.y + enemy.size &&
+        this.y + this.height > enemy.y
+      ) {
+        isGameOver = true;
+        return;
+      }
+    }
+
+    for (let coin of coins) {
+      if (!coin.collected &&
+        this.x < coin.x + coin.radius &&
+        this.x + this.width > coin.x - coin.radius &&
+        this.y < coin.y + coin.radius &&
+        this.y + this.height > coin.y - coin.radius
+      ) {
+        coin.collected = true;
+        score++;
+        document.getElementById("score").textContent = score;
+        checkAllCoinsCollected();
+      }
+    }
+
+    if (this.y > canvas.height + 100) {
+      this.reset();
+    }
+  }
+
+  draw() {
+    ctx.fillStyle = 'gold';
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+  }
+}
+
+class Platform {
+  constructor(x, y, width = 120, height = 10) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+  }
+
+  draw() {
+    ctx.fillStyle = '#555';
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+  }
+}
+
+class Enemy {
+  constructor(x, y, size, speed, range) {
+    this.startX = x;
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.speed = speed;
+    this.range = range;
+    this.dir = 1;
+  }
+
+  update() {
+    this.x += this.speed * this.dir;
+    if (this.x > this.startX + this.range || this.x < this.startX) {
+      this.dir *= -1;
+    }
+  }
+
+  draw() {
+    ctx.fillStyle = 'red';
+    ctx.fillRect(this.x, this.y, this.size, this.size);
+  }
+}
+
+class Coin {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.radius = 10;
+    this.collected = false;
+  }
+
+  draw() {
+    if (!this.collected) {
+      ctx.fillStyle = 'yellow';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+const player = new Player();
+let platforms = [];
+let enemies = [];
+let coins = [];
+
+function isLevelPlayable() {
+  const maxJumpHeight = player.jumpStrength * 2.5;
+  const maxHorizontalReach = player.speed * 15;
+
+  // Sort platforms bottom-up
+  const sorted = [...platforms].sort((a, b) => b.y - a.y);
+
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i];
+    let reachable = false;
+
+    for (let j = i + 1; j < sorted.length; j++) {
+      const next = sorted[j];
+      const verticalDistance = current.y - next.y;
+      const horizontalDistance = Math.abs((current.x + current.width / 2) - (next.x + next.width / 2));
+
+      if (verticalDistance <= maxJumpHeight && horizontalDistance <= maxHorizontalReach) {
+        reachable = true;
+        break;
+      }
+    }
+
+    if (!reachable) return false;
+  }
+
+  return true;
+}
+
+function generateLevel(preserveScore = true) {
+  let tries = 0;
+
+  do {
+    platforms = [];
+    enemies = [];
+    coins = [];
+
+    if (!preserveScore) {
+      score = 0;
+      document.getElementById("score").textContent = score;
+    }
+
+    platforms.push(new Platform(0, canvas.height - 10, canvas.width, 10));
+
+    const platformCount = Math.floor(Math.random() * 16) + 10;
+    const spacing = canvas.height / (platformCount + 1);
+
+    for (let i = 0; i < platformCount; i++) {
+      const y = canvas.height - (spacing * (i + 1));
+      const x = Math.random() * (canvas.width - 150);
+      const width = 100 + Math.random() * 100;
+      const plat = new Platform(x, y, width, 10);
+      platforms.push(plat);
+
+      if (Math.random() < 0.5) {
+        const enemyX = x + 10;
+        const enemyY = y - 30;
+        const speed = 1 + Math.random() * 1.5;
+        const range = Math.min(80, width - 40);
+        enemies.push(new Enemy(enemyX, enemyY, 30, speed, range));
+      }
+
+      if (Math.random() < 0.7) {
+        const coinX = x + width / 2;
+        const coinY = y - 15;
+        coins.push(new Coin(coinX, coinY));
+      }
+    }
+    tries++;
+  } while (!isLevelPlayable() && tries < 15);
+}
+
+function restartLevel() {
+  player.reset();
+  generateLevel(false);
+  isGameOver = false;
+}
+
+function refreshLevel() {
+  if (isGameOver) return;
+  generateLevel(true);
+}
+
+function checkAllCoinsCollected() {
+  if (coins.every(c => c.collected)) {
+    generateLevel(true);
+  }
+}
+
+function updateHighScore() {
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem('highScore', highScore);
+    document.getElementById('high-score').textContent = highScore;
+  }
+}
+
+generateLevel();
+
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!isGameOver) {
+    player.update();
+    enemies.forEach(e => e.update());
+  }
+
+  player.draw();
+  platforms.forEach(p => p.draw());
+  enemies.forEach(e => e.draw());
+  coins.forEach(c => c.draw());
+
+  if (isGameOver) {
+    updateHighScore();
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'white';
+    ctx.font = '48px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('💀 Game Over!', canvas.width / 2, canvas.height / 2);
+    ctx.font = '24px sans-serif';
+    ctx.fillText('Press "Restart Level" to try again.', canvas.width / 2, canvas.height / 2 + 40);
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
