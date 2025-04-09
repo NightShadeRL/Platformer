@@ -47,7 +47,6 @@ canvas.height = window.innerHeight;
 let score = 0;
 let isGameOver = false;
 let highScore = localStorage.getItem('highScore') ? parseInt(localStorage.getItem('highScore')) : 0;
-
 document.getElementById('high-score').textContent = highScore;
 
 const keys = {};
@@ -66,7 +65,7 @@ class Player {
 
   reset() {
     this.x = 100;
-    this.y = canvas.height - this.height - 10; // Starts on the floor
+    this.y = canvas.height - this.height - 10;
     this.velX = 0;
     this.velY = 0;
   }
@@ -86,7 +85,6 @@ class Player {
     this.y += this.velY;
 
     this.onGround = false;
-
     for (let plat of platforms) {
       if (
         this.x < plat.x + plat.width &&
@@ -120,10 +118,10 @@ class Player {
 
     for (let coin of coins) {
       if (!coin.collected &&
-        this.x < coin.x + coin.radius &&
-        this.x + this.width > coin.x - coin.radius &&
-        this.y < coin.y + coin.radius &&
-        this.y + this.height > coin.y - coin.radius
+          this.x < coin.x + coin.radius &&
+          this.x + this.width > coin.x - coin.radius &&
+          this.y < coin.y + coin.radius &&
+          this.y + this.height > coin.y - coin.radius
       ) {
         coin.collected = true;
         score++;
@@ -207,56 +205,43 @@ let coins = [];
 function isLevelPlayable() {
   const maxJumpHeight = player.jumpStrength * 2.5;
   const maxHorizontalReach = player.speed * 15;
-
-  // Sort platforms bottom-up
   const sorted = [...platforms].sort((a, b) => b.y - a.y);
-
   for (let i = 0; i < sorted.length - 1; i++) {
     const current = sorted[i];
     let reachable = false;
-
     for (let j = i + 1; j < sorted.length; j++) {
       const next = sorted[j];
       const verticalDistance = current.y - next.y;
       const horizontalDistance = Math.abs((current.x + current.width / 2) - (next.x + next.width / 2));
-
       if (verticalDistance <= maxJumpHeight && horizontalDistance <= maxHorizontalReach) {
         reachable = true;
         break;
       }
     }
-
     if (!reachable) return false;
   }
-
   return true;
 }
 
 function generateLevel(preserveScore = true) {
   let tries = 0;
-
   do {
     platforms = [];
     enemies = [];
     coins = [];
-
     if (!preserveScore) {
       score = 0;
       document.getElementById("score").textContent = score;
     }
-
     platforms.push(new Platform(0, canvas.height - 10, canvas.width, 10));
-
     const platformCount = Math.floor(Math.random() * 16) + 10;
     const spacing = canvas.height / (platformCount + 1);
-
     for (let i = 0; i < platformCount; i++) {
       const y = canvas.height - (spacing * (i + 1));
       const x = Math.random() * (canvas.width - 150);
       const width = 100 + Math.random() * 100;
       const plat = new Platform(x, y, width, 10);
       platforms.push(plat);
-
       if (Math.random() < 0.5) {
         const enemyX = x + 10;
         const enemyY = y - 30;
@@ -264,7 +249,6 @@ function generateLevel(preserveScore = true) {
         const range = Math.min(80, width - 40);
         enemies.push(new Enemy(enemyX, enemyY, 30, speed, range));
       }
-
       if (Math.random() < 0.7) {
         const coinX = x + width / 2;
         const coinY = y - 15;
@@ -302,34 +286,37 @@ function updateHighScore() {
 
 generateLevel();
 
+// Locking the frame rate to 30 FPS
+const fpsInterval = 1000 / 60;
+let then = Date.now();
+
 function gameLoop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  if (!isGameOver) {
-    player.update();
-    enemies.forEach(e => e.update());
-  }
-
-  player.draw();
-  platforms.forEach(p => p.draw());
-  enemies.forEach(e => e.draw());
-  coins.forEach(c => c.draw());
-
-  if (isGameOver) {
-    updateHighScore();
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = 'white';
-    ctx.font = '48px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('💀 Game Over!', canvas.width / 2, canvas.height / 2);
-    ctx.font = '24px sans-serif';
-    ctx.fillText('Press "Restart Level" to try again.', canvas.width / 2, canvas.height / 2 + 40);
-  }
-
   requestAnimationFrame(gameLoop);
+  const now = Date.now();
+  const elapsed = now - then;
+  if (elapsed > fpsInterval) {
+    then = now - (elapsed % fpsInterval);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!isGameOver) {
+      player.update();
+      enemies.forEach(e => e.update());
+    }
+    player.draw();
+    platforms.forEach(p => p.draw());
+    enemies.forEach(e => e.draw());
+    coins.forEach(c => c.draw());
+    if (isGameOver) {
+      updateHighScore();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = '48px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('💀 Game Over!', canvas.width / 2, canvas.height / 2);
+      ctx.font = '24px sans-serif';
+      ctx.fillText('Press "Restart Level" to try again.', canvas.width / 2, canvas.height / 2 + 40);
+    }
+  }
 }
 
 gameLoop();
